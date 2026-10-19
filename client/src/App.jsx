@@ -37,7 +37,9 @@ import {
   LayoutTemplate,
   CheckCircle2,
   RotateCcw,
-  Move
+  Move,
+  Smartphone,
+  ArrowLeft
 } from 'lucide-react';
 
 import ResumePreview from './components/ResumePreview';
@@ -45,6 +47,7 @@ import AiModal from './components/AiModal';
 import SavedResumesModal from './components/SavedResumesModal';
 import SettingsModal from './components/SettingsModal';
 import SectionEditModal from './components/SectionEditModal';
+import DeviceConnectModal from './components/DeviceConnectModal';
 import {
   SANJAY_RESUME,
   SAMPLE_RESUME,
@@ -74,8 +77,16 @@ export default function App() {
   const [activeRailTab, setActiveRailTab] = useState('layers'); // 'layers', 'ai', 'templates', 'saved', 'settings'
   const [leftTab, setLeftTab] = useState('layer'); // 'layer' | 'assets'
   const [activeSection, setActiveSection] = useState('header'); // selected section on canvas
-  const [zoom, setZoom] = useState(70); // zoom level %
+  const [mobileTab, setMobileTab] = useState('canvas'); // 'canvas' | 'layers' | 'inspector'
+  const [zoom, setZoom] = useState(() => {
+    if (typeof window !== 'undefined') {
+      if (window.innerWidth < 640) return 42; // Perfect fit for smartphone screens (360px-430px)
+      if (window.innerWidth < 1024) return 55; // Perfect fit for tablet screens
+    }
+    return 70; // Desktop default
+  });
   const [isPanMode, setIsPanMode] = useState(false);
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
 
   // Inspector & Typography State
   const [fontSize, setFontSize] = useState(12);
@@ -221,6 +232,7 @@ export default function App() {
   };
 
   // Export to PDF using html2pdf.js with fallback to window.print
+  // Export to PDF using html2pdf.js with fallback to window.print
   const handleExportPdf = () => {
     const element = document.getElementById('printable-resume');
     if (!element) {
@@ -229,8 +241,16 @@ export default function App() {
     }
 
     setIsExporting(true);
+
+    // Save previous zoom transform to avoid distorted/blurry capture
+    const zoomContainer = element.closest('.transition-all');
+    const originalTransform = zoomContainer ? zoomContainer.style.transform : '';
+    if (zoomContainer) {
+      zoomContainer.style.transform = 'none';
+    }
+
     const opt = {
-      margin: 8,
+      margin: 0, // Zero margin so exact 210mm x 297mm pages map 1:1 without clipping
       filename: `${(resume.personalInfo.fullName || 'Resume').replace(/\s+/g, '_')}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: {
@@ -238,29 +258,29 @@ export default function App() {
         useCORS: true,
         letterRendering: true,
         scrollY: 0,
-        scrollX: 0
+        scrollX: 0,
+        windowWidth: 794 // Standard 96 DPI A4 width in px
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+      pagebreak: { mode: ['css', 'legacy'], before: ['.html2pdf__page-break', '.page-break'] }
     };
 
-    try {
+    setTimeout(() => {
       html2pdf()
         .set(opt)
         .from(element)
         .save()
         .then(() => {
+          if (zoomContainer) zoomContainer.style.transform = originalTransform;
           setIsExporting(false);
         })
         .catch((err) => {
           console.warn('html2pdf fallback to print:', err);
+          if (zoomContainer) zoomContainer.style.transform = originalTransform;
           setIsExporting(false);
           window.print();
         });
-    } catch (e) {
-      setIsExporting(false);
-      window.print();
-    }
+    }, 120);
   };
 
   // Share action
@@ -362,10 +382,40 @@ export default function App() {
           </div>
         </div>
 
-        {/* Center: Save status */}
-        <div className="hidden md:flex items-center gap-2 text-xs text-slate-400">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>{saveStatus}</span>
+        {/* Center: Page Mode Switcher & Save status */}
+        <div className="hidden md:flex items-center gap-3 text-xs">
+          {/* Page Mode Switcher: 1 Page vs 2 Pages */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => updateResumeWithHistory({ ...resume, pageMode: '1-page' })}
+              title="Fit entire resume onto single A4 sheet"
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                (resume.pageMode || '2-page') === '1-page'
+                  ? 'bg-white text-orange-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              1 Page
+            </button>
+            <button
+              type="button"
+              onClick={() => updateResumeWithHistory({ ...resume, pageMode: '2-page' })}
+              title="Comprehensive 2-page detailed layout"
+              className={`px-2.5 py-1 rounded-md text-xs font-semibold transition ${
+                (resume.pageMode || '2-page') === '2-page'
+                  ? 'bg-white text-orange-600 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              2 Pages
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{saveStatus}</span>
+          </div>
         </div>
 
         {/* Right: Actions */}
@@ -380,16 +430,26 @@ export default function App() {
               });
               setIsAiModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs transition"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs transition"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>Analyze</span>
+            <span className="hidden xs:inline sm:inline">Analyze</span>
+          </button>
+
+          {/* Connect Other Devices / QR Button */}
+          <button
+            onClick={() => setIsDeviceModalOpen(true)}
+            title="Open on Phones, Tablets, and other devices"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-xs font-semibold text-indigo-700 shadow-2xs transition"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Other Devices</span>
           </button>
 
           {/* Share Button */}
           <button
             onClick={handleShare}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs transition"
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 shadow-2xs transition"
           >
             <Share2 className="w-3.5 h-3.5 text-slate-500" />
             <span className="hidden sm:inline">Share</span>
@@ -422,7 +482,7 @@ export default function App() {
         {/* ---------------------------------------------------- */}
         {/* LEFT TOOL RAIL (MINI ICON BAR)                       */}
         {/* ---------------------------------------------------- */}
-        <aside className="no-print w-14 bg-white border-r border-slate-200 flex flex-col items-center py-4 justify-between shrink-0 z-10">
+        <aside className="no-print hidden sm:flex w-14 bg-white border-r border-slate-200 flex-col items-center py-4 justify-between shrink-0 z-10">
           <div className="flex flex-col items-center gap-3">
             <button
               onClick={() => setActiveRailTab('layers')}
@@ -482,7 +542,26 @@ export default function App() {
         {/* ---------------------------------------------------- */}
         {/* LEFT DRAWER PANEL (AI GENERATOR & LAYERS)            */}
         {/* ---------------------------------------------------- */}
-        <section className="no-print w-72 lg:w-80 bg-white border-r border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+        <section className={`no-print bg-white border-r border-slate-200 flex-col shrink-0 overflow-y-auto ${
+          mobileTab === 'layers'
+            ? 'flex w-full absolute inset-0 z-20 lg:relative lg:w-72 lg:z-auto'
+            : 'hidden lg:flex lg:w-72 lg:w-80'
+        }`}>
+          {/* Mobile Back Header */}
+          <div className="lg:hidden flex items-center justify-between p-3 bg-slate-900 text-white border-b border-slate-800">
+            <span className="font-bold text-xs flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-orange-400" />
+              Layers & AI Tools
+            </span>
+            <button
+              onClick={() => setMobileTab('canvas')}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Resume</span>
+            </button>
+          </div>
+
           {/* AI Generator Card (matching screenshot top-left) */}
           <div className="p-3.5 border-b border-slate-200">
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 shadow-2xs space-y-2.5">
@@ -569,15 +648,50 @@ export default function App() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-400 px-1">
                   <span>Pages</span>
-                  <span className="text-[10px] text-slate-500 lowercase">1 / 1</span>
+                  <span className="text-[10px] text-slate-500 lowercase">
+                    {(resume.pageMode || '2-page') === '2-page' ? '2 / 2' : '1 / 1'}
+                  </span>
                 </div>
-                <div className="flex items-center justify-between p-2 rounded-lg bg-orange-50/60 border border-orange-200/80 text-xs font-medium text-slate-800">
+                
+                {/* Page 1 selector */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('resume-page-1');
+                    if (el) el.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-orange-50/60 border border-orange-200/80 text-xs font-medium text-slate-800 hover:bg-orange-100 transition"
+                >
                   <div className="flex items-center gap-2">
                     <div className="w-5 h-7 rounded border border-orange-300 bg-white shadow-2xs" />
-                    <span>Page 1</span>
+                    <div className="text-left">
+                      <div className="font-bold text-slate-900">Page 1</div>
+                      <div className="text-[10px] text-slate-500">Profile, Skills & Experience</div>
+                    </div>
                   </div>
-                  <Eye className="w-3.5 h-3.5 text-slate-400" />
-                </div>
+                  <Eye className="w-3.5 h-3.5 text-orange-600" />
+                </button>
+
+                {/* Page 2 selector (when in 2-page mode) */}
+                {(resume.pageMode || '2-page') === '2-page' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById('resume-page-2');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    className="w-full flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs font-medium text-slate-700 hover:bg-orange-50/70 hover:border-orange-200 transition mt-1"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-7 rounded border border-slate-300 bg-white shadow-2xs" />
+                      <div className="text-left">
+                        <div className="font-bold text-slate-800">Page 2</div>
+                        <div className="text-[10px] text-slate-500">Projects & Credentials</div>
+                      </div>
+                    </div>
+                    <Eye className="w-3.5 h-3.5 text-slate-400" />
+                  </button>
+                )}
               </div>
 
               {/* Layer / Section List */}
@@ -696,7 +810,9 @@ export default function App() {
         {/* ---------------------------------------------------- */}
         <main
           onClick={() => setActiveSection(null)}
-          className="flex-1 bg-slate-100 overflow-auto relative flex flex-col items-center justify-start p-6 select-none"
+          className={`flex-1 bg-slate-100 overflow-auto relative flex flex-col items-center justify-start p-2 sm:p-6 select-none ${
+            mobileTab === 'canvas' ? 'flex' : 'hidden lg:flex'
+          }`}
         >
           {/* Resume Sheet Preview Container */}
           <div className="w-full flex justify-center py-4">
@@ -711,13 +827,14 @@ export default function App() {
               fillColor={fillColor}
               textColor={textColor}
               textAlign={textAlign}
+              pageMode={resume.pageMode || '2-page'}
             />
           </div>
 
           {/* Floating Bottom Canvas Dock (matching screenshot bottom toolbar) */}
           <div
             onClick={(e) => e.stopPropagation()}
-            className="no-print fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white rounded-full px-4 py-2 shadow-2xl border border-slate-700/80 flex items-center gap-3 z-30"
+            className="no-print fixed bottom-14 lg:bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md text-white rounded-full px-3 sm:px-4 py-1.5 sm:py-2 shadow-2xl border border-slate-700/80 flex items-center gap-2 sm:gap-3 z-20 max-w-[94vw] overflow-x-auto"
           >
             {/* Pointer / Pan toggle */}
             <button
@@ -737,6 +854,39 @@ export default function App() {
             >
               <FileText className="w-3.5 h-3.5" />
             </button>
+
+            <div className="w-px h-3.5 bg-slate-700" />
+
+            {/* Quick Page Jump Buttons */}
+            <div className="flex items-center gap-1 text-xs text-slate-300">
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('resume-page-1');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                title="Scroll to Page 1"
+                className="px-2 py-0.5 rounded hover:bg-slate-800 text-[11px] font-semibold text-slate-300 hover:text-white transition"
+              >
+                P1
+              </button>
+              {(resume.pageMode || '2-page') === '2-page' && (
+                <>
+                  <span className="text-slate-600">/</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById('resume-page-2');
+                      if (el) el.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                    title="Scroll to Page 2"
+                    className="px-2 py-0.5 rounded hover:bg-slate-800 text-[11px] font-semibold text-slate-300 hover:text-white transition"
+                  >
+                    P2
+                  </button>
+                </>
+              )}
+            </div>
 
             <div className="w-px h-3.5 bg-slate-700" />
 
@@ -786,8 +936,60 @@ export default function App() {
         {/* ---------------------------------------------------- */}
         {/* RIGHT INSPECTOR & STYLING PANEL                      */}
         {/* ---------------------------------------------------- */}
-        <aside className="no-print w-72 lg:w-80 bg-white border-l border-slate-200 flex flex-col shrink-0 overflow-y-auto">
+        <aside className={`no-print bg-white border-l border-slate-200 flex-col shrink-0 overflow-y-auto ${
+          mobileTab === 'inspector'
+            ? 'flex w-full absolute inset-0 z-20 lg:relative lg:w-72 lg:z-auto'
+            : 'hidden lg:flex lg:w-72 lg:w-80'
+        }`}>
+          {/* Mobile Back Header */}
+          <div className="lg:hidden flex items-center justify-between p-3 bg-slate-900 text-white border-b border-slate-800">
+            <span className="font-bold text-xs flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-orange-400" />
+              Design & Typography
+            </span>
+            <button
+              onClick={() => setMobileTab('canvas')}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Resume</span>
+            </button>
+          </div>
+
           <div className="p-4 space-y-5 text-xs">
+            {/* Page Format Section */}
+            <div className="space-y-2">
+              <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px] block">
+                Page Format
+              </span>
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => updateResumeWithHistory({ ...resume, pageMode: '1-page' })}
+                  className={`py-1.5 px-2 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    (resume.pageMode || '2-page') === '1-page'
+                      ? 'bg-white shadow-2xs text-orange-600 font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>1 Page (Fit)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateResumeWithHistory({ ...resume, pageMode: '2-page' })}
+                  className={`py-1.5 px-2 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition ${
+                    (resume.pageMode || '2-page') === '2-page'
+                      ? 'bg-white shadow-2xs text-orange-600 font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>2 Pages (Full)</span>
+                </button>
+              </div>
+            </div>
+
             {/* Alignment Section (matching screenshot) */}
             <div className="space-y-2">
               <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px] block">
@@ -1046,9 +1248,53 @@ export default function App() {
         </aside>
       </div>
 
+      {/* Mobile Bottom Navigation Bar (Visible only on tablets & phones) */}
+      <div className="lg:hidden no-print flex items-center justify-around bg-white border-t border-slate-200 py-1.5 px-2 shrink-0 shadow-lg z-30">
+        <button
+          onClick={() => setMobileTab('layers')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-semibold transition ${
+            mobileTab === 'layers' ? 'text-orange-600 bg-orange-50' : 'text-slate-500'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          <span>Layers & AI</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('canvas')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-4 rounded-lg text-[11px] font-semibold transition ${
+            mobileTab === 'canvas' ? 'text-orange-600 bg-orange-50' : 'text-slate-500'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Resume Sheet</span>
+        </button>
+        <button
+          onClick={() => setMobileTab('inspector')}
+          className={`flex flex-col items-center gap-0.5 py-1 px-3 rounded-lg text-[11px] font-semibold transition ${
+            mobileTab === 'inspector' ? 'text-orange-600 bg-orange-50' : 'text-slate-500'
+          }`}
+        >
+          <Sliders className="w-4 h-4" />
+          <span>Design Style</span>
+        </button>
+        <button
+          onClick={() => setIsDeviceModalOpen(true)}
+          className="flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[11px] font-semibold text-indigo-600 hover:bg-indigo-50 transition"
+        >
+          <Smartphone className="w-4 h-4 text-indigo-600" />
+          <span>QR / Connect</span>
+        </button>
+      </div>
+
       {/* ======================================================== */}
       {/* 3. MODALS & OVERLAYS                                     */}
       {/* ======================================================== */}
+
+      {/* Device Connect Modal (QR Code & multi-device LAN access) */}
+      <DeviceConnectModal
+        isOpen={isDeviceModalOpen}
+        onClose={() => setIsDeviceModalOpen(false)}
+      />
 
       {/* AI Assistant Modal (Bullet Enhancer, Job Tailoring, ATS Score) */}
       <AiModal

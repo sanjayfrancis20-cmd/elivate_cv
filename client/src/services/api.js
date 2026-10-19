@@ -1,7 +1,24 @@
-const DEFAULT_API_BASE = 'http://localhost:5000/api';
+export function getDefaultApiBase() {
+  if (typeof window !== 'undefined') {
+    // When running Vite dev server, '/api' is proxied to backend seamlessly for any device
+    if (window.location.port === '5173') {
+      return '/api';
+    }
+    // If not proxied, connect to port 5000 of the same host machine
+    return `${window.location.protocol}//${window.location.hostname}:5000/api`;
+  }
+  return 'http://localhost:5000/api';
+}
 
 export function getApiBaseUrl() {
-  return localStorage.getItem('elevate_api_base') || DEFAULT_API_BASE;
+  const custom = localStorage.getItem('elevate_api_base');
+  // Avoid broken localhost references when accessed from mobile or other network devices
+  if (custom && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    if (custom.includes('localhost:5000')) {
+      return '/api';
+    }
+  }
+  return custom || getDefaultApiBase();
 }
 
 export function setApiBaseUrl(url) {

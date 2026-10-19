@@ -5,6 +5,7 @@ export const SANJAY_RESUME = {
   themeColor: '#0284c7',
   fontFamily: 'jakarta',
   spacing: 'compact',
+  pageMode: '2-page',
   personalInfo: {
     fullName: 'SANJAY FRANCIS A',
     jobTitle: 'FULL STACK WEB DEVELOPER | WEB DEVELOPER',

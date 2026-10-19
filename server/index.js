@@ -61,6 +61,6 @@ async function connectDB() {
 
 connectDB();
 
-app.listen(PORT, () => {
-  console.log(` Resume Builder Server running on http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(` Resume Builder Server running on port ${PORT} (http://localhost:${PORT})`);
 });

@@ -14,7 +14,8 @@ const ResumePreview = forwardRef(({
   onEditSection = null,
   fillColor = '#ffffff',
   textColor = '#0f172a',
-  textAlign = 'left'
+  textAlign = 'left',
+  pageMode = '2-page'
 }, ref) => {
   const templateProps = {
     resume,
@@ -22,7 +23,10 @@ const ResumePreview = forwardRef(({
     onSelectSection,
     onTriggerAi,
     onEditSection,
-    textColor
+    textColor,
+    textAlign,
+    fillColor,
+    pageMode: pageMode || resume.pageMode || '2-page'
   };
 
   const getTemplateComponent = () => {
@@ -72,7 +76,7 @@ const ResumePreview = forwardRef(({
   const scaleRatio = zoom / 100;
 
   return (
-    <div className="flex justify-center items-start min-h-full p-4 sm:p-8 overflow-auto">
+    <div className="flex justify-center items-start min-h-full p-2 sm:p-6 overflow-auto">
       <div
         style={{
           transform: `scale(${scaleRatio})`,
@@ -84,8 +88,7 @@ const ResumePreview = forwardRef(({
         <div
           ref={ref}
           id="printable-resume"
-          style={{ backgroundColor: fillColor || '#ffffff' }}
-          className={`print-area resume-sheet shadow-resume rounded-sm overflow-hidden ${getFontClass()} ${getSpacingClass()}`}
+          className={`print-area flex flex-col items-center w-full ${getFontClass()} ${getSpacingClass()}`}
         >
           {getTemplateComponent()}
         </div>
